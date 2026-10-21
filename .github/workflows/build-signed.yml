@@ -1,0 +1,43 @@
+name: build-signed
+on: 
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - run: npm install
+      - name: Prepare www
+        run: |
+          npm run build || true
+          mkdir -p www
+          if [ -d dist ]; then cp -r dist/* www/; fi
+          cp index.html www/ 2>/dev/null || echo "<html><body>Khira Alshamel</body></html>" > www/index.html
+      - run: npx cap add android || true
+      - run: npx cap sync android
+      - name: Inject Icon
+        run: |
+          if [ -f icon.png ]; then
+            for d in android/app/src/main/res/mipmap-*; do cp icon.png $d/ic_launcher.png 2>/dev/null || true; cp icon.png $d/ic_launcher_round.png 2>/dev/null || true; done
+          fi
+      - name: Build Signed Fadel03906563
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > android/app/mykey.jks
+          ls -lh android/app/mykey.jks
+          echo "storeFile=mykey.jks" > android/app/key.properties
+          echo "storePassword=Fadel03906563" >> android/app/key.properties
+          echo "keyAlias=mykey" >> android/app/key.properties
+          echo "keyPassword=Fadel03906563" >> android/app/key.properties
+          chmod +x android/gradlew
+          cd android && ./gradlew assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Khira-FINAL-SIGNED-APK
+          path: android/app/build/outputs/apk/release/*.apk
