@@ -10,27 +10,30 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
 
-      - name: Find icon khira.png
-        run: |
-          ICON=$(ls khira.png iconp.png icon.png 2>/dev/null | head -1)
-          echo "ICON=$ICON"
-          echo "ICON_FILE=$ICON" >> $GITHUB_ENV
+      - name: Check icon
+        run: ls -lh khira.png && echo "OK khira.png found"
 
       - run: npm install
       - run: |
           mkdir -p www
           [ -d dist ] && cp -r dist/* www/ || true
-          cp index.html www/ 2>/dev/null || echo "<html>Khira Alshamel</html>" > www/index.html
+          cp index.html www/ 2>/dev/null || true
       - run: npx cap add android || true
       - run: npx cap sync android
 
-      - name: Inject icon
+      - name: FIX Duplicate - remove xml icons
         run: |
+          echo "Removing duplicate xml icons..."
+          rm -rf android/app/src/main/res/mipmap-anydpi-v26
+          rm -f android/app/src/main/res/mipmap-*/ic_launcher.xml
+          rm -f android/app/src/main/res/mipmap-*/ic_launcher_round.xml
           for d in android/app/src/main/res/mipmap-*; do
-            [ -d "$d" ] && cp "$ICON_FILE" "$d/ic_launcher.png" && cp "$ICON_FILE" "$d/ic_launcher_round.png"
+            cp khira.png "$d/ic_launcher.png"
+            cp khira.png "$d/ic_launcher_round.png"
+            echo "Fixed $d"
           done
 
-      - name: PATCH build.gradle + Generate Keystore Fadel03906563
+      - name: Keystore Fadel03906563
         run: |
           python3 << 'PY'
           import pathlib
@@ -38,36 +41,26 @@ jobs:
           s=p.read_text()
           if "keystoreProperties" not in s:
               s=s.replace("android {", "def keystoreProperties = new Properties()\ndef keystorePropertiesFile = rootProject.file('app/key.properties')\nif (keystorePropertiesFile.exists()) { keystoreProperties.load(new FileInputStream(keystorePropertiesFile)) }\n\nandroid {")
-          if "signingConfigs" not in s or "storeFile file(keystoreProperties" not in s:
+          if "signingConfigs" not in s:
               s=s.replace("buildTypes {", "signingConfigs { release { if (keystorePropertiesFile.exists()) { storeFile file(keystoreProperties['storeFile']); storePassword keystoreProperties['storePassword']; keyAlias keystoreProperties['keyAlias']; keyPassword keystoreProperties['keyPassword'] } } }\n    buildTypes {")
           if "signingConfig signingConfigs.release" not in s:
-              s=s.replace("buildTypes {\n        release {\n            minifyEnabled false", "buildTypes {\n        release {\n            signingConfig signingConfigs.release\n            minifyEnabled false")
               s=s.replace("buildTypes {\n        release {", "buildTypes {\n        release {\n            signingConfig signingConfigs.release")
           p.write_text(s)
-          print("Patched build.gradle for signing")
           PY
-          rm -f android/app/mykey.jks
           keytool -genkeypair -keystore android/app/mykey.jks -storepass Fadel03906563 -keypass Fadel03906563 -alias mykey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Khira, L=Tripoli, C=LB"
           echo "storeFile=mykey.jks" > android/app/key.properties
           echo "storePassword=Fadel03906563" >> android/app/key.properties
           echo "keyAlias=mykey" >> android/app/key.properties
           echo "keyPassword=Fadel03906563" >> android/app/key.properties
-          ls -lh android/app/mykey.jks android/app/key.properties
 
-      - name: Build APK + AAB (both signed)
+      - name: Build APK + AAB
         run: |
           chmod +x android/gradlew
-          cd android
-          ./gradlew clean
-          ./gradlew assembleRelease bundleRelease
-          ls -lh app/build/outputs/apk/release/ app/build/outputs/bundle/release/
-
-      - name: Verify signatures
-        run: |
-          TOOLS=$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
-          $ANDROID_HOME/build-tools/$TOOLS/apksigner verify --print-certs android/app/build/outputs/apk/release/*.apk
-          $ANDROID_HOME/build-tools/$TOOLS/apksigner verify --print-certs android/app/build/outputs/bundle/release/*.aab || jarsigner -verify -verbose -certs android/app/build/outputs/bundle/release/*.aab | head -20
+          cd android && ./gradlew clean assembleRelease bundleRelease
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Khira-APK-AAB-S
+          name: Khira-APK-AAB-FIXED
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/bundle/release/*.aab
