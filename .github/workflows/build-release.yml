@@ -13,32 +13,46 @@ jobs:
           distribution: temurin
           java-version: 17
       - run: npm install
-      - name: Prepare www folder from root files
+
+      - name: Prepare www folder
         run: |
           mkdir -p www
           cp index.html www/ 2>/dev/null || true
           cp -r *.js *.css *.json *.png *.jpg *.jpeg www/ 2>/dev/null || true
-          # إذا عندك ملفات تانية بالجذر انسخها
           cp -r assets www/ 2>/dev/null || true
           ls -la www/
+
       - run: npx cap add android || true
       - run: npx cap sync android
-      - name: Decode Keystore
-        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/mykey.jks
-      - name: Create key.properties
+
+      - name: Decode Keystore & Create key.properties
         run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/mykey.jks
+          ls -lh android/app/mykey.jks
           echo "storeFile=mykey.jks" > android/key.properties
           echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/key.properties
           echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
           echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "storeFile=mykey.jks" > android/app/key.properties
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> android/app/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/app/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/app/key.properties
+          cat android/key.properties
+
+      - name: Patch build.gradle to force signing
+        run: |
+          cat android/app/build.gradle | head -n 100
+
       - run: chmod +x android/gradlew
-      - run: cd android && ./gradlew bundleRelease
-      - run: cd android && ./gradlew assembleRelease
+      - run: cd android && ./gradlew bundleRelease --info
+      - run: cd android && ./gradlew assembleRelease --info
+
       - uses: actions/upload-artifact@v4
         with:
-          name: aab
+          name: app-release-SIGNED-aab
           path: android/app/build/outputs/bundle/release/*.aab
+
       - uses: actions/upload-artifact@v4
         with:
-          name: apk
+          name: app-release-SIGNED-apk
           path: android/app/build/outputs/apk/release/*.apk
