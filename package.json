@@ -1,7 +1,7 @@
 {
-  "name": "mushaf-luxury",
+  "name": "khira-alshamel",
   "version": "1.0.0",
-  "description": "Mushaf release AAB signed",
+  "description": "khira release AAB signed",
   "scripts": {
     "build": "npx cap sync android"
   },
