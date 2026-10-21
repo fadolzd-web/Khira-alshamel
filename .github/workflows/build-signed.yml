@@ -1,9 +1,5 @@
 name: build-signed
-on: 
-  push:
-    branches: [main]
-  workflow_dispatch:
-
+on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -14,30 +10,46 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - run: npm install
-      - name: Prepare www
-        run: |
+      - run: |
           npm run build || true
           mkdir -p www
-          if [ -d dist ]; then cp -r dist/* www/; fi
-          cp index.html www/ 2>/dev/null || echo "<html><body>Khira Alshamel</body></html>" > www/index.html
+          [ -d dist ] && cp -r dist/* www/ || true
+          [ -f index.html ] && cp index.html www/ || true
+          echo "<html>Khira</html>" > www/index.html 2>/dev/null || true
       - run: npx cap add android || true
       - run: npx cap sync android
-      - name: Inject Icon
+      - name: Fix Icon
         run: |
-          if [ -f icon.png ]; then
-            for d in android/app/src/main/res/mipmap-*; do cp icon.png $d/ic_launcher.png 2>/dev/null || true; cp icon.png $d/ic_launcher_round.png 2>/dev/null || true; done
-          fi
-      - name: Build Signed Fadel03906563
+          if [ -f icon.png ]; then for d in android/app/src/main/res/mipmap-*; do cp icon.png $d/ic_launcher.png 2>/dev/null || true; cp icon.png $d/ic_launcher_round.png 2>/dev/null || true; done; fi
+      - name: PATCH build.gradle to use Fadel03906563
+        run: |
+          cat > /tmp/patch.py << 'PY'
+          import pathlib
+          p=pathlib.Path("android/app/build.gradle")
+          s=p.read_text()
+          if "keystoreProperties" not in s:
+              s=s.replace("android {", "def keystoreProperties = new Properties()\ndef keystorePropertiesFile = rootProject.file('app/key.properties')\nif (keystorePropertiesFile.exists()) { keystoreProperties.load(new FileInputStream(keystorePropertiesFile)) }\n\nandroid {")
+          if "signingConfigs" not in s or "storeFile" not in s:
+              # inject signingConfigs before buildTypes
+              s=s.replace("buildTypes {", "signingConfigs { release { if (keystoreProperties['storeFile']) { storeFile file(keystoreProperties['storeFile']); storePassword keystoreProperties['storePassword']; keyAlias keystoreProperties['keyAlias']; keyPassword keystoreProperties['keyPassword'] } } }\n    buildTypes {")
+              s=s.replace("buildTypes {\n        release {\n            minifyEnabled false", "buildTypes {\n        release {\n            signingConfig signingConfigs.release\n            minifyEnabled false")
+          p.write_text(s)
+          print(s[:2000])
+          PY
+          python3 /tmp/patch.py
+      - name: Build SIGNED Fadel03906563
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | tr -d '\n\r ' | base64 --decode > android/app/mykey.jks
-          ls -lh android/app/mykey.jks
           echo "storeFile=mykey.jks" > android/app/key.properties
           echo "storePassword=Fadel03906563" >> android/app/key.properties
           echo "keyAlias=mykey" >> android/app/key.properties
           echo "keyPassword=Fadel03906563" >> android/app/key.properties
+          ls -lh android/app/mykey.jks
+          cat android/app/key.properties
           chmod +x android/gradlew
+          cd android && ./gradlew assembleRelease --info | grep -i sign || true
           cd android && ./gradlew assembleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: Khira-FINAL-SIGNED-APK
+          name: Khira-FINAL-SIGNED-Fadel03906563
           path: android/app/build/outputs/apk/release/*.apk
