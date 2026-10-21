@@ -1,15 +1,5 @@
 {
-  "appId": "com.fadolzd.khira",
-  "appName": "الخيرة المباركة",
-  "webDir": ".",
-  "bundledWebRuntime": false,
-  "plugins": {
-    "LocalNotifications": {
-      "smallIcon": "ic_launcher",
-      "iconColor": "#1A3C2A"
-    }
-  },
-  "android": {
-    "allowMixedContent": true
-  }
+  "appId": "com.fadolzd.web",
+  "appName": "Khira-alshamel",
+  "webDir": "www"
 }
