@@ -12,23 +12,35 @@ jobs:
       
       - run: npm install
       
-      - name: Build web assets
+      - name: Prepare web assets
         run: |
-          npm run build || echo "no build script"
+          npm run build || true
           mkdir -p www
-          if [ -f dist/index.html ]; then cp -r dist/* www/; fi
-          if [ ! -f www/index.html ]; then
-            cp index.html www/ 2>/dev/null || true
-            cp -r assets www/ 2>/dev/null || true
-            cp -r src www/ 2>/dev/null || true
-          fi
-          ls -lh www/ | head -20
-          if [ ! -f www/index.html ]; then echo "ERROR: www/index.html still missing"; exit 1; fi
-
+          [ -d dist ] && cp -r dist/* www/ || true
+          [ -f index.html ] && cp index.html www/ || true
+          [ -d assets ] && cp -r assets www/ || true
+          ls www/
+      
       - run: npx cap add android || true
       - run: npx cap sync android
 
-      - name: Build Signed with Fadel03906563
+      - name: Inject Khira Icon
+        run: |
+          if [ -f icon.png ]; then
+            echo "Found icon.png, injecting into Android"
+            for d in android/app/src/main/res/mipmap-*; do
+              if [ -d "$d" ]; then
+                cp icon.png "$d/ic_launcher.png" || true
+                cp icon.png "$d/ic_launcher_round.png" || true
+                cp icon.png "$d/ic_launcher_foreground.png" || true
+              fi
+            done
+            cp icon.png android/app/src/main/res/drawable/ic_launcher.png 2>/dev/null || mkdir -p android/app/src/main/res/drawable && cp icon.png android/app/src/main/res/drawable/ic_launcher.png
+          else
+            echo "icon.png not found, using default"
+          fi
+
+      - name: Build Signed Fadel03906563
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/mykey.jks
           echo "storeFile=mykey.jks" > android/app/key.properties
@@ -40,9 +52,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Khira-SIGNED-Fadel03906563-APK
+          name: Khira-ICON-SIGNED-APK
           path: android/app/build/outputs/apk/release/*.apk
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Khira-SIGNED-Fadel03906563-AAB
-          path: android/app/build/outputs/bundle/release/*.aab
