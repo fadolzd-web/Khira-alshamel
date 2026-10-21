@@ -13,41 +13,32 @@ jobs:
       - run: |
           mkdir -p www
           [ -d dist ] && cp -r dist/* www/ || true
-          cp index.html www/ 2>/dev/null || echo "<html><body>Khira Alshamel</body></html>" > www/index.html
+          cp index.html www/ 2>/dev/null || echo "<html>Khira</html>" > www/index.html
       - run: npx cap add android || true
       - run: npx cap sync android
-      - name: Inject Icon
+      - name: Icon
         run: |
           if [ -f icon.png ]; then for d in android/app/src/main/res/mipmap-*; do cp icon.png $d/ic_launcher.png 2>/dev/null || true; cp icon.png $d/ic_launcher_round.png 2>/dev/null || true; done; fi
-      - name: PATCH build.gradle for signing
+      - name: Generate Keystore Fadel03906563
         run: |
-          python3 << 'PY'
-          import pathlib
-          p=pathlib.Path("android/app/build.gradle")
-          s=p.read_text()
-          if "keystoreProperties" not in s:
-              s=s.replace("android {", "def keystoreProperties = new Properties()\ndef keystorePropertiesFile = rootProject.file('app/key.properties')\nif (keystorePropertiesFile.exists()) { keystoreProperties.load(new FileInputStream(keystorePropertiesFile)) }\n\nandroid {")
-          if "signingConfigs" not in s or "storeFile file(keystoreProperties" not in s:
-              s=s.replace("buildTypes {", "signingConfigs { release { if (keystorePropertiesFile.exists()) { storeFile file(keystoreProperties['storeFile']); storePassword keystoreProperties['storePassword']; keyAlias keystoreProperties['keyAlias']; keyPassword keystoreProperties['keyPassword'] } } }\n    buildTypes {")
-              s=s.replace("buildTypes {\n        release {\n            minifyEnabled false", "buildTypes {\n        release {\n            signingConfig signingConfigs.release\n            minifyEnabled false")
-          p.write_text(s)
-          print("patched")
-          PY
-      - name: GENERATE Keystore Fadel03906563 (no secret needed)
-        run: |
-          rm -f android/app/mykey.jks android/app/debug.keystore
-          keytool -genkeypair -v -keystore android/app/mykey.jks -storepass Fadel03906563 -keypass Fadel03906563 -alias mykey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Khira Al Shamel, OU=Khira, O=Khira, L=Tripoli, ST=North, C=LB"
-          echo "storeFile=mykey.jks" > android/app/key.properties
-          echo "storePassword=Fadel03906563" >> android/app/key.properties
-          echo "keyAlias=mykey" >> android/app/key.properties
-          echo "keyPassword=Fadel03906563" >> android/app/key.properties
+          rm -f android/app/mykey.jks
+          keytool -genkeypair -keystore android/app/mykey.jks -storepass Fadel03906563 -keypass Fadel03906563 -alias mykey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Khira, OU=Khira, O=Khira, L=Tripoli, C=LB"
           ls -lh android/app/mykey.jks
-          keytool -list -keystore android/app/mykey.jks -storepass Fadel03906563
-      - name: Build SIGNED APK
+      - name: Build UNSIGNED Release
         run: |
           chmod +x android/gradlew
-          cd android && ./gradlew assembleRelease
+          cd android && ./gradlew assembleRelease -x validateSigningRelease || ./gradlew assembleRelease -Dorg.gradle.warning.mode=none || true
+          find app/build/outputs -name "*.apk" | head
+      - name: SIGN MANUALLY with Fadel03906563
+        run: |
+          BUILD_TOOLS=$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)
+          echo "Using $BUILD_TOOLS"
+          APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
+          echo "Found APK: $APK"
+          $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner sign --ks android/app/mykey.jks --ks-pass pass:Fadel03906563 --key-pass pass:Fadel03906563 --ks-key-alias mykey --out android/app/build/outputs/apk/release/Khira-SIGNED-Fadel03906563.apk $APK
+          $ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner verify --print-certs android/app/build/outputs/apk/release/Khira-SIGNED-Fadel03906563.apk
+          ls -lh android/app/build/outputs/apk/release/
       - uses: actions/upload-artifact@v4
         with:
           name: Khira-SIGNED-Fadel03906563-FINAL
-          path: android/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/release/Khira-SIGNED-Fadel03906563.apk
